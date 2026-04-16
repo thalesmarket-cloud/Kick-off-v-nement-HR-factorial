@@ -1,0 +1,6 @@
+{
+  "name": "EventSync",
+  "description": "A minimalist meeting assistant and task tracker for corporate event planning, featuring interactive checklists, task management, and meeting notes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
