@@ -29,7 +29,8 @@ import {
   MeetingInfo, 
   INITIAL_CHECKLIST, 
   MILESTONES,
-  Status
+  Status,
+  OWNERS
 } from './types';
 
 const STORAGE_KEY = 'eventsync_data';
@@ -48,10 +49,10 @@ export default function App() {
     }
     return {
       meetingInfo: {
-        title: 'Corporate Annual Event 2026',
+        title: 'Lancement Événementiel SIRH Digital 2026',
         date: format(new Date(), 'yyyy-MM-dd'),
-        time: '10:00',
-        location: 'Main Conference Room'
+        time: '14:30',
+        location: 'Salle d\'Innovation - Siège'
       },
       checklist: INITIAL_CHECKLIST.map(item => ({ ...item, id: generateId() })),
       tasks: [],
@@ -79,23 +80,143 @@ export default function App() {
     }
   }, [notification]);
 
-  // --- Helpers ---
-  const progress = useMemo(() => {
-    const total = state.checklist.length;
-    const completed = state.checklist.filter(item => item.completed).length;
-    return total > 0 ? Math.round((completed / total) * 100) : 0;
+  // --- Budget Auto-calculation ---
+  useEffect(() => {
+    const budgetItems = state.checklist.filter(i => 
+      i.section === '💰 3. Budget & finance' && 
+      i.type === 'currency' && 
+      i.label !== 'Budget global'
+    );
+    
+    const totalBudget = budgetItems.reduce((acc, item) => {
+      const val = parseFloat(item.text) || 0;
+      return acc + val;
+    }, 0);
+
+    const budgetGlobalItem = state.checklist.find(i => 
+      i.section === '💰 3. Budget & finance' && 
+      i.label === 'Budget global'
+    );
+
+    if (budgetGlobalItem && parseFloat(budgetGlobalItem.text) !== totalBudget) {
+      updateChecklistItem(budgetGlobalItem.id, { text: totalBudget.toString() });
+    }
   }, [state.checklist]);
+
+  // --- Helpers ---
+  const dashboardMetrics = useMemo(() => {
+    const checklist = state.checklist;
+    
+    // 1. Overall Metrics
+    const totalItems = checklist.length;
+    const completedItems = checklist.filter(i => i.completed).length;
+    const overallProgress = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+
+    // 2. Core Strategic Objectives (The 3 items specifically requested)
+    const strategicItems = checklist.filter(i => 
+      i.section === '🎯 1. Cadrage stratégique' && (!i.indent || i.indent === 0)
+    );
+    
+    const strategicCompleted = strategicItems.filter(task => {
+      // Special logic for Thématique parent
+      if (task.text.includes('Thématique')) {
+        const subThemes = checklist.filter(i => i.section === task.section && i.indent === 1);
+        return subThemes.some(i => i.completed);
+      }
+      return task.completed;
+    });
+
+    const strategicProgress = strategicItems.length > 0 
+      ? Math.round((strategicCompleted.length / strategicItems.length) * 100) 
+      : 0;
+
+    // 3. Section Breakdown
+    const sections = Array.from(new Set(checklist.map(i => i.section)));
+    const sectionMetrics = sections.map(name => {
+      const items = checklist.filter(i => i.section === name);
+      const completed = items.filter(i => i.completed).length;
+      return {
+        name,
+        total: items.length,
+        completed,
+        progress: Math.round((completed / items.length) * 100)
+      };
+    });
+
+    return { 
+      progress: overallProgress, 
+      remainingCount: totalItems - completedItems,
+      strategicProgress,
+      strategicItems: strategicItems.map(item => ({
+        id: item.id,
+        text: item.text,
+        completed: item.text.includes('Thématique') 
+          ? checklist.filter(i => i.section === item.section && i.indent === 1).some(sub => sub.completed)
+          : item.completed
+      })),
+      sectionMetrics
+    };
+  }, [state.checklist]);
+
+  const { progress, remainingCount, strategicProgress, strategicItems, sectionMetrics } = dashboardMetrics;
 
   const updateMeetingInfo = (info: Partial<MeetingInfo>) => {
     setState(prev => ({ ...prev, meetingInfo: { ...prev.meetingInfo, ...info } }));
   };
 
   const toggleChecklistItem = (id: string) => {
+    setState(prev => {
+      const itemToToggle = prev.checklist.find(i => i.id === id);
+      if (!itemToToggle) return prev;
+
+      const willBeCompleted = !itemToToggle.completed;
+
+      return {
+        ...prev,
+        checklist: prev.checklist.map(item => {
+          // If this is the item being toggled correctly
+          if (item.id === id) {
+            return { 
+              ...item, 
+              completed: willBeCompleted, 
+              status: willBeCompleted ? 'Terminé' : 'Pas commencé' 
+            };
+          }
+          // If the toggled item was exclusive and now completed, uncheck all other exclusive items in the same section
+          if (willBeCompleted && itemToToggle.isExclusive && item.section === itemToToggle.section && item.isExclusive) {
+            return {
+              ...item,
+              completed: false,
+              status: 'Pas commencé'
+            };
+          }
+          return item;
+        })
+      };
+    });
+  };
+
+  const addChecklistItem = (section: string) => {
+    const newItem: ChecklistItem = {
+      id: generateId(),
+      section,
+      text: '',
+      completed: false,
+      status: 'Pas commencé',
+      // If adding to the strategy section, make it exclusive and indented
+      isExclusive: section.includes('stratégique'),
+      indent: section.includes('stratégique') ? 1 : 0
+    };
     setState(prev => ({
       ...prev,
-      checklist: prev.checklist.map(item => 
-        item.id === id ? { ...item, completed: !item.completed, status: !item.completed ? 'Done' : 'Not started' } : item
-      )
+      checklist: [...prev.checklist, newItem]
+    }));
+  };
+
+  const deleteChecklistItem = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      checklist: prev.checklist.filter(item => item.id !== id)
     }));
   };
 
@@ -109,10 +230,10 @@ export default function App() {
   const addTask = () => {
     const newTask: Task = {
       id: generateId(),
-      title: 'New Task',
+      title: 'Nouvelle tâche',
       assignee: '',
       deadline: format(new Date(), 'yyyy-MM-dd'),
-      status: 'Not started'
+      status: 'Pas commencé'
     };
     setState(prev => ({ ...prev, tasks: [newTask, ...prev.tasks] }));
   };
@@ -128,7 +249,7 @@ export default function App() {
     setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
   };
 
-  const addDecision = (type: 'Decision' | 'Next Step') => {
+  const addDecision = (type: 'Décision' | 'Action suivante') => {
     const newDecision: Decision = {
       id: generateId(),
       text: '',
@@ -151,18 +272,18 @@ export default function App() {
 
   const copySummary = () => {
     const summary = `
-Meeting: ${state.meetingInfo.title}
-Date: ${state.meetingInfo.date} at ${state.meetingInfo.time}
-Progress: ${progress}%
+Réunion: ${state.meetingInfo.title}
+Date: ${state.meetingInfo.date} à ${state.meetingInfo.time}
+Progression: ${progress}%
 
-Decisions:
-${state.decisions.filter(d => d.type === 'Decision').map(d => `- ${d.text}`).join('\n')}
+Décisions:
+${state.decisions.filter(d => d.type === 'Décision').map(d => `- ${d.text}`).join('\n')}
 
-Next Steps:
-${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Resp: ${d.responsible || 'TBD'})`).join('\n')}
+Actions suivantes:
+${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text} (Resp: ${d.responsible || 'À définir'})`).join('\n')}
     `.trim();
     navigator.clipboard.writeText(summary);
-    setNotification('Summary copied to clipboard!');
+    setNotification('Résumé copié dans le presse-papier !');
   };
 
   const exportPDF = () => {
@@ -179,32 +300,35 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
     switch (activeTab) {
       case 'dashboard':
         return (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
             <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">Meeting Details</h3>
-                <div className="space-y-4">
+              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                  <div className="w-2 h-2 bg-indigo-500 rounded-full" />
+                  Détails de la réunion
+                </h3>
+                <div className="space-y-6">
                   <input 
-                    className="text-2xl font-semibold w-full bg-transparent border-none focus:ring-0 p-0"
+                    className="text-2xl font-bold w-full bg-transparent border-none focus:ring-0 p-0 text-gray-900 placeholder:text-gray-200"
                     value={state.meetingInfo.title}
                     onChange={e => updateMeetingInfo({ title: e.target.value })}
-                    placeholder="Meeting Title"
+                    placeholder="Titre de la réunion"
                   />
-                  <div className="flex items-center gap-4 text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
+                  <div className="flex flex-wrap items-center gap-x-8 gap-y-4 text-gray-600">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="w-5 h-5 text-indigo-400" />
                       <input 
                         type="date"
-                        className="bg-transparent border-none focus:ring-0 p-0 text-sm"
+                        className="bg-transparent border-none focus:ring-0 p-0 text-sm font-medium"
                         value={state.meetingInfo.date}
                         onChange={e => updateMeetingInfo({ date: e.target.value })}
                       />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-indigo-400" />
                       <input 
                         type="time"
-                        className="bg-transparent border-none focus:ring-0 p-0 text-sm"
+                        className="bg-transparent border-none focus:ring-0 p-0 text-sm font-medium"
                         value={state.meetingInfo.time}
                         onChange={e => updateMeetingInfo({ time: e.target.value })}
                       />
@@ -213,36 +337,133 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Overall Progress</h3>
-                  <div className="text-4xl font-light text-gray-900">{progress}%</div>
+              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100 flex flex-col justify-between overflow-hidden relative">
+                {/* Background Decor */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl opacity-50 -mr-16 -mt-16" />
+                
+                <div className="relative z-10">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                    Avancement Préparation
+                  </h3>
+                  <div className="flex items-baseline gap-2">
+                    <div className="text-5xl font-black text-gray-900 tracking-tighter">{progress}%</div>
+                    <div className="text-sm font-bold text-gray-400">Terminé</div>
+                  </div>
                 </div>
-                <div className="w-full bg-gray-100 h-2 rounded-full mt-4 overflow-hidden">
-                  <motion.div 
-                    className="bg-indigo-500 h-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 1, ease: "easeOut" }}
-                  />
+                <div className="mt-8 relative z-10">
+                  <div className="flex justify-between text-xs font-bold text-gray-400 mb-2 uppercase tracking-tight">
+                    <span>Progression</span>
+                    <span>{remainingCount} restants</span>
+                  </div>
+                  <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden">
+                    <motion.div 
+                      className="bg-indigo-600 h-full shadow-[0_0_15px_rgba(79,70,229,0.3)]"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progress}%` }}
+                      transition={{ duration: 1.5, ease: "circOut" }}
+                    />
+                  </div>
                 </div>
               </div>
             </section>
 
-            <section className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
-              <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-6">Quick Summary</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Strategic Objectives Tile */}
+              <section className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+                <div className="flex justify-between items-center mb-8">
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <LayoutDashboard className="w-4 h-4 text-indigo-500" />
+                    Objectifs Stratégiques
+                  </h3>
+                  <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold">
+                    {strategicProgress}% Validés
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {strategicItems.map((item) => (
+                    <div 
+                      key={item.id}
+                      className={cn(
+                        "p-4 rounded-2xl border-2 transition-all duration-300",
+                        item.completed 
+                          ? "bg-emerald-50 border-emerald-100" 
+                          : "bg-gray-50 border-gray-100"
+                      )}
+                    >
+                      <div className="flex flex-col gap-3">
+                        <div className={cn(
+                          "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
+                          item.completed ? "bg-emerald-500 text-white" : "bg-white text-gray-300 shadow-sm"
+                        )}>
+                          {item.completed ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-1.5 h-1.5 bg-gray-300 rounded-full" />}
+                        </div>
+                        <div>
+                          <p className={cn(
+                            "text-xs font-bold uppercase tracking-tight mb-1",
+                            item.completed ? "text-emerald-700" : "text-gray-400"
+                          )}>
+                            {item.completed ? 'Validé' : 'À définir'}
+                          </p>
+                          <p className={cn(
+                            "text-sm font-semibold leading-tight",
+                            item.completed ? "text-gray-900" : "text-gray-500"
+                          )}>
+                            {item.text.replace('🎯 ', '').split(' : ')[0]}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              {/* Status Section Progress */}
+              <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-8 flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-indigo-500" />
+                  Statut par Étape
+                </h3>
+                <div className="space-y-6">
+                  {sectionMetrics.map((section) => (
+                    <div key={section.name} className="space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold text-gray-600 uppercase tracking-tight">
+                        <span className="truncate max-w-[150px]">{section.name.split('. ')[1] || section.name}</span>
+                        <span className="text-indigo-600">{section.progress}%</span>
+                      </div>
+                      <div className="w-full bg-gray-50 h-1.5 rounded-full overflow-hidden">
+                        <motion.div 
+                          className={cn(
+                            "h-full rounded-full transition-all duration-1000",
+                            section.progress === 100 ? "bg-emerald-500" : "bg-indigo-500"
+                          )}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${section.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-8 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-indigo-500" />
+                Dernières informations
+              </h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                <div className="p-4 bg-indigo-50 rounded-2xl">
-                  <div className="text-indigo-600 font-semibold text-xl">{state.checklist.filter(i => !i.completed).length}</div>
-                  <div className="text-indigo-800 text-xs uppercase tracking-wide font-medium">Checklist Items Left</div>
+                <div className="p-6 bg-indigo-50 rounded-[1.5rem] border border-indigo-100">
+                  <div className="text-indigo-600 font-black text-3xl tracking-tighter mb-1">{state.tasks.filter(t => t.status !== 'Terminé').length}</div>
+                  <div className="text-indigo-800 text-[10px] uppercase tracking-widest font-black">Tâches actives</div>
                 </div>
-                <div className="p-4 bg-emerald-50 rounded-2xl">
-                  <div className="text-emerald-600 font-semibold text-xl">{state.tasks.filter(t => t.status !== 'Done').length}</div>
-                  <div className="text-emerald-800 text-xs uppercase tracking-wide font-medium">Active Tasks</div>
+                <div className="p-6 bg-emerald-50 rounded-[1.5rem] border border-emerald-100">
+                  <div className="text-emerald-600 font-black text-3xl tracking-tighter mb-1">{state.decisions.length}</div>
+                  <div className="text-emerald-800 text-[10px] uppercase tracking-widest font-black">Décisions prises</div>
                 </div>
-                <div className="p-4 bg-amber-50 rounded-2xl">
-                  <div className="text-amber-600 font-semibold text-xl">{state.decisions.length}</div>
-                  <div className="text-amber-800 text-xs uppercase tracking-wide font-medium">Decisions Made</div>
+                <div className="p-6 bg-amber-50 rounded-[1.5rem] border border-amber-100">
+                  <div className="text-amber-600 font-black text-3xl tracking-tighter mb-1">{remainingCount}</div>
+                  <div className="text-amber-800 text-[10px] uppercase tracking-widest font-black">Points de check restants</div>
                 </div>
               </div>
             </section>
@@ -261,25 +482,118 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                 </h3>
                 <div className="space-y-3">
                   {state.checklist.filter(i => i.section === section).map(item => (
-                    <div key={item.id} className="group flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors">
-                      <button 
-                        onClick={() => toggleChecklistItem(item.id)}
-                        className={cn(
-                          "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0",
-                          item.completed ? "bg-indigo-500 border-indigo-500 text-white" : "border-gray-300 hover:border-indigo-400"
+                    <div 
+                      key={item.id} 
+                      className={cn(
+                        "group flex items-center gap-4 p-3 hover:bg-gray-50 rounded-xl transition-colors",
+                        item.indent && item.indent > 0 && "ml-8 border-l-2 border-gray-100 pl-6 rounded-l-none"
+                      )}
+                    >
+                      {/* Hide checkbox for parent items that have exclusive children */}
+                      {!(item.text.includes('Thématique') && !item.indent) ? (
+                        <button 
+                          onClick={() => toggleChecklistItem(item.id)}
+                          className={cn(
+                            "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0",
+                            item.completed ? "bg-indigo-500 border-indigo-500 text-white" : "border-gray-300 hover:border-indigo-400",
+                            item.isExclusive && !item.completed && "border-dashed"
+                          )}
+                          title={item.isExclusive ? "Sélectionner ce thème (choix unique)" : "Cocher"}
+                        >
+                          {item.completed ? <CheckCircle2 className="w-4 h-4" /> : (item.isExclusive && <div className="w-2 h-2 bg-indigo-200 rounded-full" />)}
+                        </button>
+                      ) : (
+                        <div className="w-6 h-6 flex items-center justify-center shrink-0">
+                          {state.checklist.some(i => i.section === item.section && i.indent === 1 && i.completed) ? (
+                            <div className="w-2 h-2 bg-emerald-500 rounded-full" />
+                          ) : (
+                            <div className="w-1.5 h-1.5 bg-gray-200 rounded-full" />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
+                        {item.indent && item.indent > 0 && <span className="text-gray-300">—</span>}
+                        {item.type === 'datetime' ? (
+                          <div className="flex items-center gap-2 flex-1">
+                            {item.label && <span className="text-sm text-gray-500 whitespace-nowrap">{item.label} :</span>}
+                            <input 
+                              type="datetime-local"
+                              className={cn(
+                                "flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-indigo-600",
+                                item.completed && "text-gray-400 line-through"
+                              )}
+                              value={item.text}
+                              onChange={e => updateChecklistItem(item.id, { text: e.target.value })}
+                            />
+                          </div>
+                        ) : item.type === 'select' ? (
+                          <div className="flex items-center gap-2 flex-1">
+                            {item.label && <span className="text-sm text-gray-500 whitespace-nowrap">{item.label} :</span>}
+                            <select
+                              className={cn(
+                                "flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-indigo-600",
+                                item.completed && "text-gray-400 line-through"
+                              )}
+                              value={item.text}
+                              onChange={e => updateChecklistItem(item.id, { text: e.target.value })}
+                            >
+                              {item.options?.map(opt => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ) : item.type === 'currency' ? (
+                          <div className="flex items-center gap-2 flex-1">
+                            {item.label && <span className="text-sm text-gray-500 whitespace-nowrap">{item.label} :</span>}
+                            <div className="flex items-center gap-1">
+                              <input 
+                                type="number"
+                                className={cn(
+                                  "w-24 bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-indigo-600",
+                                  item.completed && "text-gray-400 line-through",
+                                  item.readOnly && "cursor-not-allowed text-indigo-400"
+                                )}
+                                value={item.text}
+                                readOnly={item.readOnly}
+                                onChange={e => !item.readOnly && updateChecklistItem(item.id, { text: e.target.value })}
+                              />
+                              <span className="text-sm font-medium text-gray-400">MAD</span>
+                            </div>
+                          </div>
+                        ) : item.type === 'number' ? (
+                          <div className="flex items-center gap-2 flex-1">
+                            {item.label && <span className="text-sm text-gray-500 whitespace-nowrap">{item.label} :</span>}
+                            <input 
+                              type="number"
+                              className={cn(
+                                "w-24 bg-transparent border-none focus:ring-0 p-0 text-sm font-medium text-indigo-600",
+                                item.completed && "text-gray-400 line-through"
+                              )}
+                              value={item.text}
+                              onChange={e => updateChecklistItem(item.id, { text: e.target.value })}
+                            />
+                          </div>
+                        ) : (
+                          <input 
+                            className={cn(
+                              "flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm",
+                              item.completed && "text-gray-400 line-through",
+                              item.isExclusive && "font-medium text-indigo-900"
+                            )}
+                            placeholder={item.isExclusive ? "Nouveau thème proposé..." : "Élément de la liste..."}
+                            value={item.text}
+                            onChange={e => updateChecklistItem(item.id, { text: e.target.value })}
+                          />
                         )}
-                      >
-                        {item.completed && <CheckCircle2 className="w-4 h-4" />}
-                      </button>
-                      <input 
-                        className={cn(
-                          "flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm",
-                          item.completed && "text-gray-400 line-through"
-                        )}
-                        value={item.text}
-                        onChange={e => updateChecklistItem(item.id, { text: e.target.value })}
-                      />
-                      <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      </div>
+                      <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                        <button 
+                          onClick={() => deleteChecklistItem(item.id)}
+                          className="text-gray-300 hover:text-red-500 transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                         <select 
                           className="text-xs font-medium text-indigo-600 bg-transparent border-none focus:ring-0 p-0 cursor-pointer"
                           value={item.status}
@@ -287,26 +601,37 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                             const newStatus = e.target.value as Status;
                             updateChecklistItem(item.id, { 
                               status: newStatus,
-                              completed: newStatus === 'Done'
+                              completed: newStatus === 'Terminé'
                             });
                           }}
                         >
-                          <option value="Not started">Not started</option>
-                          <option value="In progress">In progress</option>
-                          <option value="Done">Done</option>
+                          <option value="Pas commencé">Pas commencé</option>
+                          <option value="En cours">En cours</option>
+                          <option value="Terminé">Terminé</option>
                         </select>
                         <div className="flex items-center gap-1">
                           <User className="w-3 h-3 text-gray-400" />
-                          <input 
-                            className="text-xs text-gray-500 bg-transparent border-none focus:ring-0 p-0 w-20"
-                            placeholder="Owner"
+                          <select 
+                            className="text-xs text-gray-500 bg-transparent border-none focus:ring-0 p-0 w-28 cursor-pointer"
                             value={item.owner || ''}
                             onChange={e => updateChecklistItem(item.id, { owner: e.target.value })}
-                          />
+                          >
+                            <option value="">Propriétaire</option>
+                            {OWNERS.map(owner => (
+                              <option key={owner} value={owner}>{owner}</option>
+                            ))}
+                          </select>
                         </div>
                       </div>
                     </div>
                   ))}
+                  <button 
+                    onClick={() => addChecklistItem(section)}
+                    className="flex items-center gap-2 text-xs font-medium text-indigo-600 hover:text-indigo-700 p-3 mt-2 rounded-xl border border-dashed border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50 transition-all w-full justify-center"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 
+                    {section.includes('stratégique') ? 'Ajouter une autre thématique ou un point de cadrage' : 'Ajouter un élément'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -317,29 +642,29 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
         return (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">Task Management</h2>
+              <h2 className="text-xl font-semibold text-gray-900">Gestion des tâches</h2>
               <button 
                 onClick={addTask}
                 className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm"
               >
-                <Plus className="w-4 h-4" /> Add Task
+                <Plus className="w-4 h-4" /> Ajouter une tâche
               </button>
             </div>
             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-bottom border-gray-100">
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Task</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assignee</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Deadline</th>
-                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tâche</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assigné à</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Échéance</th>
+                    <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
                     <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {state.tasks.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400 italic">No tasks added yet.</td>
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-400 italic">Aucune tâche ajoutée pour le moment.</td>
                     </tr>
                   ) : (
                     state.tasks.map(task => (
@@ -352,12 +677,16 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                           />
                         </td>
                         <td className="px-6 py-4">
-                          <input 
-                            className="bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-600"
-                            placeholder="Unassigned"
+                          <select 
+                            className="bg-transparent border-none focus:ring-0 p-0 text-sm text-gray-600 cursor-pointer w-full"
                             value={task.assignee}
                             onChange={e => updateTask(task.id, { assignee: e.target.value })}
-                          />
+                          >
+                            <option value="">Non assigné</option>
+                            {OWNERS.map(owner => (
+                              <option key={owner} value={owner}>{owner}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-6 py-4">
                           <input 
@@ -373,9 +702,9 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                             value={task.status}
                             onChange={e => updateTask(task.id, { status: e.target.value as Status })}
                           >
-                            <option value="Not started">Not started</option>
-                            <option value="In progress">In progress</option>
-                            <option value="Done">Done</option>
+                            <option value="Pas commencé">Pas commencé</option>
+                            <option value="En cours">En cours</option>
+                            <option value="Terminé">Terminé</option>
                           </select>
                         </td>
                         <td className="px-6 py-4 text-right">
@@ -399,14 +728,14 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
         return (
           <div className="h-full flex flex-col space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-900">Meeting Notes</h2>
+              <h2 className="text-xl font-semibold text-gray-900">Notes de la réunion</h2>
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <Save className="w-3 h-3" /> Auto-saving...
+                <Save className="w-3 h-3" /> Sauvegarde automatique...
               </div>
             </div>
             <textarea 
               className="flex-1 w-full p-8 bg-white rounded-3xl shadow-sm border border-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none font-serif text-lg leading-relaxed text-gray-800"
-              placeholder="Start typing your meeting notes here..."
+              placeholder="Commencez à saisir vos notes de réunion ici..."
               value={state.notes}
               onChange={e => setState(prev => ({ ...prev, notes: e.target.value }))}
             />
@@ -421,22 +750,22 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Lightbulb className="w-5 h-5 text-amber-500" /> Decisions
+                    <Lightbulb className="w-5 h-5 text-amber-500" /> Décisions
                   </h3>
                   <button 
-                    onClick={() => addDecision('Decision')}
+                    onClick={() => addDecision('Décision')}
                     className="p-1 hover:bg-amber-50 rounded-full text-amber-600 transition-colors"
                   >
                     <Plus className="w-5 h-5" />
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {state.decisions.filter(d => d.type === 'Decision').map(decision => (
+                  {state.decisions.filter(d => d.type === 'Décision').map(decision => (
                     <div key={decision.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 group">
                       <div className="flex gap-3">
                         <textarea 
                           className="flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm resize-none h-12"
-                          placeholder="What was decided?"
+                          placeholder="Qu'est-ce qui a été décidé ?"
                           value={decision.text}
                           onChange={e => updateDecision(decision.id, { text: e.target.value })}
                         />
@@ -456,22 +785,22 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <ChevronRight className="w-5 h-5 text-indigo-500" /> Next Steps
+                    <ChevronRight className="w-5 h-5 text-indigo-500" /> Actions suivantes
                   </h3>
                   <button 
-                    onClick={() => addDecision('Next Step')}
+                    onClick={() => addDecision('Action suivante')}
                     className="p-1 hover:bg-indigo-50 rounded-full text-indigo-600 transition-colors"
                   >
                     <Plus className="w-5 h-5" />
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {state.decisions.filter(d => d.type === 'Next Step').map(step => (
+                  {state.decisions.filter(d => d.type === 'Action suivante').map(step => (
                     <div key={step.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 group">
                       <div className="flex gap-3 mb-2">
                         <textarea 
                           className="flex-1 bg-transparent border-none focus:ring-0 p-0 text-sm resize-none h-12"
-                          placeholder="What needs to be done?"
+                          placeholder="Que faut-il faire ?"
                           value={step.text}
                           onChange={e => updateDecision(step.id, { text: e.target.value })}
                         />
@@ -486,7 +815,7 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                         <User className="w-3 h-3 text-gray-400" />
                         <input 
                           className="text-xs text-indigo-600 font-medium bg-transparent border-none focus:ring-0 p-0"
-                          placeholder="Responsible"
+                          placeholder="Responsable"
                           value={step.responsible || ''}
                           onChange={e => updateDecision(step.id, { responsible: e.target.value })}
                         />
@@ -502,7 +831,7 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
       case 'timeline':
         return (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-xl font-semibold text-gray-900 mb-12">Event Timeline</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-12">Ligne de temps de l'événement</h2>
             <div className="relative">
               {/* Vertical Line */}
               <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-100" />
@@ -515,7 +844,7 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                     </div>
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-1 hover:shadow-md transition-all cursor-default">
                       <h4 className="font-semibold text-gray-900 mb-1">{milestone.description}</h4>
-                      <p className="text-sm text-gray-500">Key milestones and deliverables for this phase.</p>
+                      <p className="text-sm text-gray-500">Jalons clés et livrables pour cette phase.</p>
                     </div>
                   </div>
                 ))}
@@ -538,11 +867,11 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2">
-          <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard />} label="Dashboard" />
-          <NavButton active={activeTab === 'checklist'} onClick={() => setActiveTab('checklist')} icon={<CheckSquare />} label="Checklist" />
-          <NavButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<ListTodo />} label="Tasks" />
+          <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard />} label="Tableau de bord" />
+          <NavButton active={activeTab === 'checklist'} onClick={() => setActiveTab('checklist')} icon={<CheckSquare />} label="Check-list" />
+          <NavButton active={activeTab === 'tasks'} onClick={() => setActiveTab('tasks')} icon={<ListTodo />} label="Tâches" />
           <NavButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<FileText />} label="Notes" />
-          <NavButton active={activeTab === 'decisions'} onClick={() => setActiveTab('decisions')} icon={<Lightbulb />} label="Decisions" />
+          <NavButton active={activeTab === 'decisions'} onClick={() => setActiveTab('decisions')} icon={<Lightbulb />} label="Décisions" />
           <NavButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<Calendar />} label="Timeline" />
         </nav>
 
@@ -552,14 +881,14 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
             className="w-full flex items-center justify-center md:justify-start gap-3 p-3 text-gray-500 hover:bg-gray-50 rounded-2xl transition-all text-sm font-medium"
           >
             <Copy className="w-5 h-5" />
-            <span className="hidden md:block">Copy Summary</span>
+            <span className="hidden md:block">Copier le résumé</span>
           </button>
           <button 
             onClick={exportPDF}
             className="w-full flex items-center justify-center md:justify-start gap-3 p-3 text-gray-500 hover:bg-gray-50 rounded-2xl transition-all text-sm font-medium"
           >
             <Download className="w-5 h-5" />
-            <span className="hidden md:block">Export PDF</span>
+            <span className="hidden md:block">Exporter en PDF</span>
           </button>
           
           <ResetButton onReset={resetData} />
@@ -580,7 +909,7 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
                 className="text-xs text-gray-400 flex items-center gap-1"
               >
                 <div className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" />
-                Saved
+                Enregistré
               </motion.div>
             )}
           </div>
@@ -617,31 +946,31 @@ ${state.decisions.filter(d => d.type === 'Next Step').map(d => `- ${d.text} (Res
       {/* Print View (Hidden by default) */}
       <div className="hidden print:block p-12 bg-white min-h-screen text-black">
         <h1 className="text-4xl font-bold mb-2">{state.meetingInfo.title}</h1>
-        <p className="text-gray-600 mb-8">{format(parseISO(state.meetingInfo.date), 'MMMM do, yyyy')} at {state.meetingInfo.time}</p>
+        <p className="text-gray-600 mb-8">{state.meetingInfo.date} à {state.meetingInfo.time}</p>
         
         <div className="space-y-12">
           <section>
-            <h2 className="text-2xl font-bold border-b-2 border-gray-900 pb-2 mb-4">Decisions</h2>
+            <h2 className="text-2xl font-bold border-b-2 border-gray-900 pb-2 mb-4">Décisions</h2>
             <ul className="list-disc pl-5 space-y-2">
-              {state.decisions.filter(d => d.type === 'Decision').map(d => (
+              {state.decisions.filter(d => d.type === 'Décision').map(d => (
                 <li key={d.id}>{d.text}</li>
               ))}
             </ul>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold border-b-2 border-gray-900 pb-2 mb-4">Next Steps</h2>
+            <h2 className="text-2xl font-bold border-b-2 border-gray-900 pb-2 mb-4">Actions suivantes</h2>
             <ul className="list-disc pl-5 space-y-2">
-              {state.decisions.filter(d => d.type === 'Next Step').map(d => (
-                <li key={d.id}>{d.text} <span className="text-gray-500 font-medium">({d.responsible || 'TBD'})</span></li>
+              {state.decisions.filter(d => d.type === 'Action suivante').map(d => (
+                <li key={d.id}>{d.text} <span className="text-gray-500 font-medium">({d.responsible || 'À définir'})</span></li>
               ))}
             </ul>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold border-b-2 border-gray-900 pb-2 mb-4">Meeting Notes</h2>
+            <h2 className="text-2xl font-bold border-b-2 border-gray-900 pb-2 mb-4">Notes de la réunion</h2>
             <div className="whitespace-pre-wrap font-serif text-lg leading-relaxed">
-              {state.notes || 'No notes recorded.'}
+              {state.notes || 'Aucune note enregistrée.'}
             </div>
           </section>
         </div>
@@ -656,19 +985,19 @@ function ResetButton({ onReset }: { onReset: () => void }) {
   if (confirming) {
     return (
       <div className="p-2 bg-red-50 rounded-2xl space-y-2">
-        <p className="text-[10px] text-red-600 font-bold uppercase text-center">Are you sure?</p>
+        <p className="text-[10px] text-red-600 font-bold uppercase text-center">Êtes-vous sûr ?</p>
         <div className="flex gap-2">
           <button 
             onClick={onReset}
             className="flex-1 bg-red-500 text-white p-2 rounded-xl text-xs font-bold hover:bg-red-600 transition-colors"
           >
-            Yes
+            Oui
           </button>
           <button 
             onClick={() => setConfirming(false)}
             className="flex-1 bg-white text-gray-500 p-2 rounded-xl text-xs font-bold border border-gray-100 hover:bg-gray-50 transition-colors"
           >
-            No
+            Non
           </button>
         </div>
       </div>
@@ -681,7 +1010,7 @@ function ResetButton({ onReset }: { onReset: () => void }) {
       className="w-full flex items-center justify-center md:justify-start gap-3 p-3 text-red-400 hover:bg-red-50 rounded-2xl transition-all text-sm font-medium"
     >
       <Trash2 className="w-5 h-5" />
-      <span className="hidden md:block">Reset Data</span>
+      <span className="hidden md:block">Réinitialiser</span>
     </button>
   );
 }
