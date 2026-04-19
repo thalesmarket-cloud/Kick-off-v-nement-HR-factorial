@@ -359,6 +359,16 @@ ${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text
       case 'dashboard':
         return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+            {/* Header Logo Section */}
+            <div className="flex justify-start mb-4">
+              <img 
+                src="https://res.cloudinary.com/diptsoc4h/image/upload/v1776614715/Logo_Thales_RVB_PNG_1_g0rhdt.png" 
+                alt="Logo Thalès Informatique" 
+                className="h-24 object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+
             <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
