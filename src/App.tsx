@@ -985,7 +985,7 @@ ${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text
           <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
             <Calendar className="w-5 h-5" />
           </div>
-          <span className="font-bold text-xl tracking-tight hidden md:block">EventSync</span>
+          <span className="font-bold text-xl tracking-tight hidden md:block text-indigo-600">Kick-off Factorial</span>
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2">
