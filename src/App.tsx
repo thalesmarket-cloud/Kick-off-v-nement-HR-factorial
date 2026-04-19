@@ -19,7 +19,8 @@ import {
   Save
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, subDays, addDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import { cn, generateId } from './lib/utils';
 import { 
   AppState, 
@@ -39,10 +40,19 @@ export default function App() {
   // --- State ---
   const [activeTab, setActiveTab] = useState<'dashboard' | 'checklist' | 'tasks' | 'notes' | 'decisions' | 'timeline'>('dashboard');
   const [state, setState] = useState<AppState>(() => {
+    const defaultMilestoneProgress = MILESTONES.reduce((acc, m) => ({
+      ...acc,
+      [m.label]: (m.items || []).map(() => false)
+    }), {});
+
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        return {
+          ...parsed,
+          milestoneProgress: parsed.milestoneProgress || defaultMilestoneProgress
+        };
       } catch (e) {
         console.error('Failed to parse saved data', e);
       }
@@ -50,14 +60,15 @@ export default function App() {
     return {
       meetingInfo: {
         title: 'Lancement Événementiel SIRH Digital 2026',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        time: '14:30',
+        date: format(addDays(new Date(), 23), 'yyyy-MM-dd'),
+        time: '09:00',
         location: 'Salle d\'Innovation - Siège'
       },
       checklist: INITIAL_CHECKLIST.map(item => ({ ...item, id: generateId() })),
       tasks: [],
       notes: '',
-      decisions: []
+      decisions: [],
+      milestoneProgress: defaultMilestoneProgress
     };
   });
 
@@ -300,6 +311,21 @@ export default function App() {
 
   const deleteDecision = (id: string) => {
     setState(prev => ({ ...prev, decisions: prev.decisions.filter(d => d.id !== id) }));
+  };
+  
+  const toggleMilestoneItem = (label: string, index: number) => {
+    setState(prev => {
+      const currentProgress = prev.milestoneProgress[label] || [];
+      const newProgress = [...currentProgress];
+      newProgress[index] = !newProgress[index];
+      return {
+        ...prev,
+        milestoneProgress: {
+          ...prev.milestoneProgress,
+          [label]: newProgress
+        }
+      };
+    });
   };
 
   const copySummary = () => {
@@ -869,17 +895,81 @@ ${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text
               <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-100" />
               
               <div className="space-y-12">
-                {MILESTONES.map((milestone, idx) => (
-                  <div key={milestone.label} className="relative flex items-center gap-12 group">
-                    <div className="z-10 w-16 h-16 rounded-full bg-white border-4 border-gray-50 shadow-sm flex items-center justify-center text-indigo-600 font-bold text-sm group-hover:border-indigo-100 transition-all">
-                      {milestone.label}
+                {MILESTONES.map((milestone, idx) => {
+                  const daysMatch = milestone.label.match(/J-(\d+)/);
+                  const daysToSub = daysMatch ? parseInt(daysMatch[1], 10) : 0;
+                  let milestoneDate = '';
+                  try {
+                    const eventDate = parseISO(state.meetingInfo.date);
+                    milestoneDate = format(subDays(eventDate, daysToSub), 'dd/MM/yyyy');
+                  } catch (e) {
+                    milestoneDate = '--/--/----';
+                  }
+
+                  return (
+                    <div key={milestone.label} className="relative flex items-center gap-12 group">
+                      <div className="z-10 flex flex-col items-center gap-1">
+                        <div className="w-16 h-16 rounded-full bg-white border-4 border-gray-50 shadow-sm flex items-center justify-center text-indigo-600 font-bold text-sm group-hover:border-indigo-100 transition-all">
+                          {milestone.label}
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400 font-mono">{milestoneDate}</span>
+                      </div>
+                      <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-1 hover:shadow-md transition-all cursor-default">
+                        <div className="flex justify-between items-start mb-4">
+                          <h4 className="font-semibold text-gray-900">{milestone.description}</h4>
+                          {milestone.items && milestone.items.length > 0 && (
+                            <div className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full">
+                              {Math.round((( (state.milestoneProgress?.[milestone.label] || []).filter(Boolean).length || 0) / milestone.items.length) * 100)}%
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Progress Bar (Roadmap) */}
+                        {milestone.items && milestone.items.length > 0 && (
+                          <div className="w-full h-1 bg-gray-50 rounded-full mb-6 overflow-hidden">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${(( (state.milestoneProgress?.[milestone.label] || []).filter(Boolean).length || 0) / milestone.items.length) * 100}%` }}
+                              className="h-full bg-indigo-500 rounded-full"
+                            />
+                          </div>
+                        )}
+
+                        {/* Detailed Milestone Items with Checkboxes */}
+                        {milestone.items && milestone.items.length > 0 && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 mt-4">
+                            {milestone.items.map((item, mIdx) => {
+                              const isCompleted = state.milestoneProgress?.[milestone.label]?.[mIdx] || false;
+                              return (
+                                <button
+                                  key={mIdx}
+                                  onClick={() => toggleMilestoneItem(milestone.label, mIdx)}
+                                  className="flex items-start gap-3 text-left group/item"
+                                >
+                                  <div className={cn(
+                                    "mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all",
+                                    isCompleted 
+                                      ? "bg-indigo-500 border-indigo-500 text-white" 
+                                      : "bg-white border-gray-200 group-hover/item:border-indigo-300"
+                                  )}>
+                                    {isCompleted && <CheckCircle2 className="w-3 h-3" />}
+                                  </div>
+                                  <span className={cn(
+                                    "text-xs transition-all",
+                                    isCompleted ? "text-gray-400 line-through" : "text-gray-600 group-hover/item:text-indigo-600"
+                                  )}>
+                                    {item}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {!milestone.items && <p className="text-sm text-gray-500">Jalons clés et livrables pour cette phase.</p>}
+                      </div>
                     </div>
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex-1 hover:shadow-md transition-all cursor-default">
-                      <h4 className="font-semibold text-gray-900 mb-1">{milestone.description}</h4>
-                      <p className="text-sm text-gray-500">Jalons clés et livrables pour cette phase.</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

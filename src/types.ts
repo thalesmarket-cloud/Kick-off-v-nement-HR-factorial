@@ -48,6 +48,7 @@ export interface AppState {
   tasks: Task[];
   notes: string;
   decisions: Decision[];
+  milestoneProgress: Record<string, boolean[]>;
 }
 
 export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
@@ -56,7 +57,7 @@ export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   { section: '🎯 1. Cadrage stratégique', text: 'Thématique de l\'événement', completed: false, status: 'Pas commencé' },
   { 
     section: '🎯 1. Cadrage stratégique', 
-    text: 'Thème Factorial : Productivité & Automatisation (Gain de temps RH)', 
+    text: 'Digitaliser ses RH : de la gestion administrative à la performance', 
     completed: false, 
     status: 'Pas commencé',
     isExclusive: true,
@@ -64,7 +65,7 @@ export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   },
   { 
     section: '🎯 1. Cadrage stratégique', 
-    text: 'Thème Factorial : Culture & Engagement (Gestion des Talents)', 
+    text: 'Expérience collaborateur : le nouveau levier de fidélisation en 2026', 
     completed: false, 
     status: 'Pas commencé',
     isExclusive: true,
@@ -72,7 +73,7 @@ export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   },
   { 
     section: '🎯 1. Cadrage stratégique', 
-    text: 'Thème Factorial : Pilotage RH 360° (Données & Décisions)', 
+    text: 'Pilotage RH par la data : prendre de meilleures décisions grâce à son SIRH', 
     completed: false, 
     status: 'Pas commencé',
     isExclusive: true,
@@ -90,7 +91,6 @@ export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   },
   { section: '📅 2. Organisation générale', text: 'Lieu (présentiel / hybride / en ligne)', completed: false, status: 'Pas commencé' },
   { section: '📅 2. Organisation générale', text: '50', completed: false, status: 'Pas commencé', type: 'number', label: 'Capacité d’accueil' },
-  { section: '📅 2. Organisation générale', text: 'Planning détaillé (agenda)', completed: false, status: 'Pas commencé' },
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', type: 'currency', label: 'Budget global', readOnly: true },
   { section: '💰 3. Budget & finance', text: 'Répartition des coûts :', completed: false, status: 'Pas commencé' },
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', indent: 1, type: 'currency', label: 'Location salle' },
@@ -165,11 +165,84 @@ export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
 ];
 
 export const MILESTONES = [
-  { label: 'J-30', description: 'Stratégie & Lieu' },
-  { label: 'J-15', description: 'Communication & Intervenants' },
-  { label: 'J-7', description: 'Logistique finale' },
-  { label: 'J-1', description: 'Répétition technique' },
-  { label: 'Jour J', description: 'Exécution' },
+  { 
+    label: 'J-23', 
+    description: 'Cadrage + lancement express (AUJOURD’HUI)',
+    items: [
+      'Définir objectifs (leads, notoriété…)',
+      'Valider cible (clients / prospects)',
+      'Choisir thématique + format',
+      'Fixer date & heure (verrouillé)',
+      'Réserver lieu (URGENT)',
+      'Définir budget global (estimatif)',
+      'Identifier + contacter speakers',
+      'Créer liste initiale d’invités'
+    ]
+  },
+  { 
+    label: 'J-18', 
+    description: 'Structuration rapide',
+    items: [
+      'Confirmer speakers (au moins 70%)',
+      'Définir agenda (version draft)',
+      'Créer invitation (email + visuels simples)',
+      'Créer formulaire d’inscription',
+      'Lancer campagne d’invitations',
+      'Préparer plan de communication'
+    ]
+  },
+  { 
+    label: 'J-14', 
+    description: 'Mise en vitesse',
+    items: [
+      'Suivre inscriptions & 1ère relance',
+      'Finaliser logistique principale (Matériel, Salle)',
+      'Valider catering',
+      'Lancer commande goodies',
+      'Commencer préparation des présentations'
+    ]
+  },
+  { 
+    label: 'J-10', 
+    description: 'Sécurisation intermédiaire',
+    items: [
+      'Vérifier taux d’inscription',
+      'Ajuster communication (Boost LinkedIn)',
+      'Confirmer définitivement speakers',
+      'Avancer fortement sur les slides',
+      'Vérifier besoins techniques'
+    ]
+  },
+  { 
+    label: 'J-7', 
+    description: 'Finalisation',
+    items: [
+      'Relance finale & confirmer RSVP',
+      'Finaliser présentations & déroulé détaillé',
+      'Affecter rôles (Accueil, Animation, Tech)',
+      'Préparer badges / liste'
+    ]
+  },
+  { 
+    label: 'J-3', 
+    description: 'Sécurisation finale',
+    items: [
+      'Tester matériel & présentations',
+      'Confirmer prestataires (Catering)',
+      'Finaliser goodies',
+      'Vérifier liste finale participants'
+    ]
+  },
+  { 
+    label: 'J-1', 
+    description: 'Readiness',
+    items: [
+      'Envoyer rappel participants',
+      'Préparer kit équipe',
+      'Répétition rapide',
+      'Vérifier checklist complète'
+    ]
+  },
 ];
 
 export const OWNERS = ['Thalès Informatique', 'Sage', 'Factorial'];
