@@ -82,10 +82,11 @@ export default function App() {
 
   // --- Budget Auto-calculation ---
   useEffect(() => {
+    const costLabelsToExclude = ['Budget global', 'Montant Thalès', 'Montant Factorial', 'Montant Sage'];
     const budgetItems = state.checklist.filter(i => 
       i.section === '💰 3. Budget & finance' && 
       i.type === 'currency' && 
-      i.label !== 'Budget global'
+      !costLabelsToExclude.includes(i.label || '')
     );
     
     const totalBudget = budgetItems.reduce((acc, item) => {
@@ -98,8 +99,39 @@ export default function App() {
       i.label === 'Budget global'
     );
 
-    if (budgetGlobalItem && parseFloat(budgetGlobalItem.text) !== totalBudget) {
-      updateChecklistItem(budgetGlobalItem.id, { text: totalBudget.toString() });
+    const updates: Record<string, string> = {};
+
+    if (budgetGlobalItem && Math.abs(parseFloat(budgetGlobalItem.text) - totalBudget) > 0.01) {
+      updates[budgetGlobalItem.id] = totalBudget.toString();
+    }
+
+    const partners = [
+      { pctLabel: 'Part Thalès (%)', amtLabel: 'Montant Thalès' },
+      { pctLabel: 'Part Factorial (%)', amtLabel: 'Montant Factorial' },
+      { pctLabel: 'Part Sage (%)', amtLabel: 'Montant Sage' }
+    ];
+
+    partners.forEach(p => {
+      const pctItem = state.checklist.find(i => i.label === p.pctLabel);
+      const amtItem = state.checklist.find(i => i.label === p.amtLabel);
+      if (pctItem && amtItem) {
+        const pct = parseFloat(pctItem.text) || 0;
+        const calculatedAmt = (totalBudget * pct) / 100;
+        if (Math.abs(parseFloat(amtItem.text) - calculatedAmt) > 0.01) {
+          updates[amtItem.id] = calculatedAmt.toFixed(2);
+        }
+      }
+    });
+
+    if (Object.keys(updates).length > 0) {
+      setState(prev => ({
+        ...prev,
+        checklist: prev.checklist.map(item => 
+          updates[item.id] !== undefined 
+            ? { ...item, text: updates[item.id] } 
+            : item
+        )
+      }));
     }
   }, [state.checklist]);
 
