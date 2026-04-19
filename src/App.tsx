@@ -173,16 +173,43 @@ export default function App() {
       ? Math.round((strategicCompleted.length / strategicItems.length) * 100) 
       : 0;
 
-    // 3. Section Breakdown
+    // 3. Budget Analysis
+    const budgetGlobalItem = checklist.find(i => i.label === 'Budget global');
+    const thalesAmt = checklist.find(i => i.label === 'Montant Thalès');
+    const factorialAmt = checklist.find(i => i.label === 'Montant Factorial');
+    const sageAmt = checklist.find(i => i.label === 'Montant Sage');
+
+    const budget = {
+      total: parseFloat(budgetGlobalItem?.text || '0'),
+      thales: parseFloat(thalesAmt?.text || '0'),
+      factorial: parseFloat(factorialAmt?.text || '0'),
+      sage: parseFloat(sageAmt?.text || '0')
+    };
+
+    // 4. Section Breakdown
     const sections = Array.from(new Set(checklist.map(i => i.section)));
     const sectionMetrics = sections.map(name => {
-      const items = checklist.filter(i => i.section === name);
-      const completed = items.filter(i => i.completed).length;
+      const allItems = checklist.filter(i => i.section === name);
+      
+      // Filter out non-interactive items (like the 'Thématique' parent)
+      const interactiveItems = allItems.filter(i => !(i.text.includes('Thématique') && !i.indent));
+      
+      // Separate normal and exclusive items
+      const normalItems = interactiveItems.filter(i => !i.isExclusive);
+      const exclusiveItems = interactiveItems.filter(i => i.isExclusive);
+      
+      // Exclusive items count as 1 total goal if they exist
+      const exclusiveGroupsCount = exclusiveItems.length > 0 ? 1 : 0;
+      const exclusiveCompletedCount = exclusiveItems.some(i => i.completed) ? 1 : 0;
+      
+      const total = normalItems.length + exclusiveGroupsCount;
+      const completed = normalItems.filter(i => i.completed).length + exclusiveCompletedCount;
+      
       return {
         name,
-        total: items.length,
+        total,
         completed,
-        progress: Math.round((completed / items.length) * 100)
+        progress: total > 0 ? Math.round((completed / total) * 100) : 0
       };
     });
 
@@ -190,18 +217,24 @@ export default function App() {
       progress: overallProgress, 
       remainingCount: totalItems - completedItems,
       strategicProgress,
-      strategicItems: strategicItems.map(item => ({
-        id: item.id,
-        text: item.text,
-        completed: item.text.includes('Thématique') 
-          ? checklist.filter(i => i.section === item.section && i.indent === 1).some(sub => sub.completed)
-          : item.completed
-      })),
-      sectionMetrics
+      // Enhanced strategic items: now includes primary info from EACH section
+      strategicItems: sectionMetrics.map(section => {
+        const primaryItem = checklist.find(i => i.section === section.name && (!i.indent || i.indent === 0));
+        return {
+          id: section.name,
+          title: section.name.split('. ')[1] || section.name,
+          icon: section.name.split(' ')[0],
+          progress: section.progress,
+          completed: section.progress === 100,
+          mainText: primaryItem ? primaryItem.text : 'A définir'
+        };
+      }),
+      sectionMetrics,
+      budget
     };
-  }, [state.checklist]);
+  }, [state.checklist, state.tasks.length, state.decisions.length]); // Added dependencies for safety
 
-  const { progress, remainingCount, strategicProgress, strategicItems, sectionMetrics } = dashboardMetrics;
+  const { progress, remainingCount, strategicProgress, strategicItems, sectionMetrics, budget } = dashboardMetrics;
 
   const updateMeetingInfo = (info: Partial<MeetingInfo>) => {
     setState(prev => ({ ...prev, meetingInfo: { ...prev.meetingInfo, ...info } }));
@@ -438,51 +471,90 @@ ${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Strategic Objectives Tile */}
-              <section className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+              <section className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden">
                 <div className="flex justify-between items-center mb-8">
-                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                   <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                     <LayoutDashboard className="w-4 h-4 text-indigo-500" />
-                    Objectifs Stratégiques
+                    Bilan Stratégique par Section
                   </h3>
                   <div className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold">
-                    {strategicProgress}% Validés
+                    {progress}% Global
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* Horizontal Scrolling Area */}
+                <div className="flex gap-4 overflow-x-auto pb-6 -mx-2 px-2 scrollbar-hide snap-x">
                   {strategicItems.map((item) => (
                     <div 
                       key={item.id}
                       className={cn(
-                        "p-4 rounded-2xl border-2 transition-all duration-300",
+                        "flex-shrink-0 w-64 p-5 rounded-[1.5rem] border-2 transition-all duration-300 snap-start",
                         item.completed 
-                          ? "bg-emerald-50 border-emerald-100" 
+                          ? "bg-emerald-50 border-emerald-100 shadow-sm md:shadow-none" 
                           : "bg-gray-50 border-gray-100"
                       )}
                     >
-                      <div className="flex flex-col gap-3">
-                        <div className={cn(
-                          "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
-                          item.completed ? "bg-emerald-500 text-white" : "bg-white text-gray-300 shadow-sm"
-                        )}>
-                          {item.completed ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-1.5 h-1.5 bg-gray-300 rounded-full" />}
+                      <div className="flex flex-col h-full justify-between">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center text-lg shadow-sm transition-colors",
+                            item.completed ? "bg-emerald-500 text-white" : "bg-white text-gray-300"
+                          )}>
+                            {item.completed ? <CheckCircle2 className="w-5 h-5" /> : <span>{item.icon}</span>}
+                          </div>
+                          <div className={cn(
+                            "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full",
+                            item.completed ? "bg-emerald-100 text-emerald-700" : "bg-white text-gray-400 border border-gray-100"
+                          )}>
+                            {item.progress}%
+                          </div>
                         </div>
+
                         <div>
                           <p className={cn(
-                            "text-xs font-bold uppercase tracking-tight mb-1",
+                            "text-[10px] font-bold uppercase tracking-widest mb-1",
                             item.completed ? "text-emerald-700" : "text-gray-400"
                           )}>
-                            {item.completed ? 'Validé' : 'À définir'}
+                            {item.title}
                           </p>
                           <p className={cn(
-                            "text-sm font-semibold leading-tight",
+                            "text-sm font-black leading-tight line-clamp-2",
                             item.completed ? "text-gray-900" : "text-gray-500"
                           )}>
-                            {item.text.replace('🎯 ', '').split(' : ')[0]}
+                            {item.mainText.replace(/^[🎯📅📍🤝💰📣✅]\s*\d*\.\s*/, '')}
                           </p>
+                        </div>
+
+                        <div className="mt-4 w-full bg-gray-200/50 h-1 rounded-full overflow-hidden">
+                          <motion.div 
+                            className={cn(
+                              "h-full rounded-full",
+                              item.completed ? "bg-emerald-500" : "bg-indigo-500"
+                            )}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${item.progress}%` }}
+                          />
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+                
+                {/* Scroll Indicator helper */}
+                <div className="flex justify-center mt-2">
+                  <div className="w-12 h-1 bg-gray-100 rounded-full relative overflow-hidden">
+                    <motion.div 
+                      className="absolute left-0 top-0 h-full bg-gray-200 rounded-full w-1/3"
+                      animate={{ 
+                        x: [0, 24, 0]
+                      }}
+                      transition={{ 
+                        duration: 3, 
+                        repeat: Infinity,
+                        ease: "easeInOut"
+                      }}
+                    />
+                  </div>
                 </div>
               </section>
 
@@ -518,9 +590,9 @@ ${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text
             <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-8 flex items-center gap-2">
                 <Plus className="w-4 h-4 text-indigo-500" />
-                Dernières informations
+                Dernières informations & Cofinancement
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
                 <div className="p-6 bg-indigo-50 rounded-[1.5rem] border border-indigo-100">
                   <div className="text-indigo-600 font-black text-3xl tracking-tighter mb-1">{state.tasks.filter(t => t.status !== 'Terminé').length}</div>
                   <div className="text-indigo-800 text-[10px] uppercase tracking-widest font-black">Tâches actives</div>
@@ -532,6 +604,28 @@ ${state.decisions.filter(d => d.type === 'Action suivante').map(d => `- ${d.text
                 <div className="p-6 bg-amber-50 rounded-[1.5rem] border border-amber-100">
                   <div className="text-amber-600 font-black text-3xl tracking-tighter mb-1">{remainingCount}</div>
                   <div className="text-amber-800 text-[10px] uppercase tracking-widest font-black">Points de check restants</div>
+                </div>
+              </div>
+
+              {/* Budget Recap */}
+              <div className="bg-gray-50/50 rounded-[2rem] p-6 border border-gray-100">
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Récapitulatif financier</h4>
+                  <div className="text-indigo-600 font-black text-xl">{budget.total.toLocaleString()} MAD</div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                  <div className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Part Thalès</p>
+                    <p className="text-sm font-black text-gray-900">{budget.thales.toLocaleString()} MAD</p>
+                  </div>
+                  <div className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Part Factorial</p>
+                    <p className="text-sm font-black text-gray-900">{budget.factorial.toLocaleString()} MAD</p>
+                  </div>
+                  <div className="p-4 bg-white rounded-2xl shadow-sm border border-gray-100">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Part Sage</p>
+                    <p className="text-sm font-black text-gray-900">{budget.sage.toLocaleString()} MAD</p>
+                  </div>
                 </div>
               </div>
             </section>

@@ -53,7 +53,10 @@ export interface AppState {
 
 export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   { section: '🎯 1. Cadrage stratégique', text: 'Objectif de l\'événement : Génération de leads', completed: false, status: 'Pas commencé' },
-  { section: '🎯 1. Cadrage stratégique', text: 'Cible : Clients existants, prospects, partenaires', completed: false, status: 'Pas commencé' },
+  { section: '🎯 1. Cadrage stratégique', text: 'Cible : Segmentation des leads', completed: false, status: 'Pas commencé' },
+  { section: '🎯 1. Cadrage stratégique', text: '🔥 Hot Leads (60%) : DRH | HR Manager | Responsable RH | Office Manager', completed: false, status: 'Pas commencé', indent: 1 },
+  { section: '🎯 1. Cadrage stratégique', text: '🌡️ Warm Leads (30%) : CEO | DG | COO | DAF', completed: false, status: 'Pas commencé', indent: 1 },
+  { section: '🎯 1. Cadrage stratégique', text: '❄️ Cold Leads (10%) : RH junior | Admin | Non décisionnaires', completed: false, status: 'Pas commencé', indent: 1 },
   { section: '🎯 1. Cadrage stratégique', text: 'Thématique de l\'événement', completed: false, status: 'Pas commencé' },
   { 
     section: '🎯 1. Cadrage stratégique', 
@@ -100,11 +103,11 @@ export const INITIAL_CHECKLIST: Omit<ChecklistItem, 'id'>[] = [
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', indent: 1, type: 'currency', label: 'Communication' },
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', indent: 1, type: 'currency', label: 'Prestataires' },
   { section: '💰 3. Budget & finance', text: 'Cofinancement des partenaires', completed: false, status: 'Pas commencé' },
-  { section: '💰 3. Budget & finance', text: '50', completed: false, status: 'Pas commencé', indent: 1, type: 'number', label: 'Part Thalès (%)' },
+  { section: '💰 3. Budget & finance', text: '33.33', completed: false, status: 'Pas commencé', indent: 1, type: 'number', label: 'Part Thalès (%)' },
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', indent: 1, type: 'currency', label: 'Montant Thalès', readOnly: true },
-  { section: '💰 3. Budget & finance', text: '25', completed: false, status: 'Pas commencé', indent: 1, type: 'number', label: 'Part Factorial (%)' },
+  { section: '💰 3. Budget & finance', text: '33.33', completed: false, status: 'Pas commencé', indent: 1, type: 'number', label: 'Part Factorial (%)' },
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', indent: 1, type: 'currency', label: 'Montant Factorial', readOnly: true },
-  { section: '💰 3. Budget & finance', text: '25', completed: false, status: 'Pas commencé', indent: 1, type: 'number', label: 'Part Sage (%)' },
+  { section: '💰 3. Budget & finance', text: '33.33', completed: false, status: 'Pas commencé', indent: 1, type: 'number', label: 'Part Sage (%)' },
   { section: '💰 3. Budget & finance', text: '0', completed: false, status: 'Pas commencé', indent: 1, type: 'currency', label: 'Montant Sage', readOnly: true },
   { section: '📍 4. Logistique', text: 'Réservation du lieu', completed: false, status: 'Pas commencé' },
   { section: '📍 4. Logistique', text: 'Aménagement (tables, chaises, scène…)', completed: false, status: 'Pas commencé' },
